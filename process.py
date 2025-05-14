@@ -183,6 +183,7 @@ def create_rgb_image(group_arr, colors_rgb, boxes):
 	return Image.fromarray(rgb_arr)
 
 def process(chapter, page, marginal_text_avg_threshold=10, marginal_text_width_threshold=40):
+	st = time.time()
 	page_folder = f"./{chapter}/{page}"
 	groups_folder = f"{page_folder}/groups"
 	
@@ -214,16 +215,15 @@ def process(chapter, page, marginal_text_avg_threshold=10, marginal_text_width_t
 		plt.plot(col_avg)
 		plt.axhline(y=col_avg.mean(), color='red')
 
-		below_avg_text = ""
+		below_avg_count = 0
 		if x2 - x1 >= marginal_text_width_threshold:
-			avg = col_avg.mean()
-			above_avg_reversed = (col_avg > avg)[::-1]
-			below_avg_count = next((i for i, v in enumerate(above_avg_reversed) if v), len(above_avg_reversed)) - 1
+			avg = col_avg.mean() / 2
+			values_after_max = col_avg[np.argmax(col_avg) + 1:]
+			below_avg_count = (values_after_max < avg).sum()
 			if below_avg_count >= marginal_text_avg_threshold:
 				gids_with_marginal_text.append(gid)
-				below_avg_text = f"_{below_avg_count}"
 
-		plt.savefig(f"{groups_folder}/{gid:02}{below_avg_text}_plot.png")
+		plt.savefig(f"{groups_folder}/{gid:02}_{below_avg_count}_plot.png")
 
 	if len(gids_with_marginal_text) > 0:
 		print(gids_with_marginal_text)
@@ -236,6 +236,7 @@ def process(chapter, page, marginal_text_avg_threshold=10, marginal_text_width_t
 		text = ocr(crop_img)
 		with open(f"{groups_folder}/{gid:02}.txt", "w", encoding="utf-8") as f:
 			f.write(text)
+	print(chapter, page, time.time() - st)
 
 def main():
 	for chapter in range(1, 5+1):
@@ -247,14 +248,13 @@ def main():
 			if int(page) < 8:
 				continue
 
-			st = time.time()
 			process(chapter, page)
-			print(chapter, page, time.time() - st)
 
 # cProfile.run('main()')
 
 main()
-# process(1, 97)
-# process(1, 111)
-# process(1, 117)
-# process(1, 128)
+
+# process(1, "097") # []
+# process(1, "111") # [16]
+# process(1, "117") # []
+# process(1, "128") # [4, 9, 10, 15, 16]
