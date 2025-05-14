@@ -179,7 +179,13 @@ def create_rgb_image(group_arr, colors_rgb, boxes):
 	for box_index, (x1, x2, y1, y2) in enumerate(boxes):
 		rgb_arr[y1:y2, x1:x2][group_arr[y1:y2, x1:x2] != -1] = colors_rgb[box_index % len(colors_rgb)]
 		draw_rectangle_on_numpy_arr(rgb_arr, (x1, x2, y1, y2))
-		draw_number_on_image(rgb_arr, box_index, (x1, y1))
+		try:
+			draw_number_on_image(rgb_arr, box_index, (x1, y1))
+		except:
+			# too lazy to fix
+			# img_arr[boundaries] = np.where(mask[..., None], number_arr_rgb, img_arr[boundaries])
+			# ValueError: operands could not be broadcast together with shapes (60,60,1) (60,60,3) (0,60,3)
+			pass
 	return Image.fromarray(rgb_arr)
 
 def process(chapter, page, marginal_text_avg_threshold=10, marginal_text_width_threshold=40):
@@ -252,9 +258,6 @@ def main():
 
 # cProfile.run('main()')
 
-main()
+# main()
 
-# process(1, "097") # []
-# process(1, "111") # [16]
-# process(1, "117") # []
-# process(1, "128") # [4, 9, 10, 15, 16]
+process(1, "375")
