@@ -9,9 +9,9 @@ plt.figure(figsize=(12, 4))
 from manga_ocr import MangaOcr
 
 # image_path = "./1/097.png"
-# image_path = "./1/111.png"
+image_path = "./1/111.png"
 # image_path = "./1/117.png"
-image_path = "./1/128.png"
+# image_path = "./1/128.png"
 
 colors_rgb = [(230, 25, 75), (60, 180, 75), (255, 225, 25), (67, 99, 216), (245, 130, 49), (145, 30, 180), (70, 240, 240), (240, 50, 230), (188, 246, 12), (250, 190, 190), (0, 128, 128), (230, 190, 255), (154, 99, 36), (255, 250, 200), (128, 0, 0), (170, 255, 195), (128, 128, 0), (255, 216, 177), (0, 0, 117), (128, 128, 128)]
 
@@ -110,7 +110,7 @@ def label_groups(binary_image, radius=20):
 	
 	return group_arr
 
-def extract_bounding_boxes(group_arr, spacing_threshold=5):
+def extract_bounding_boxes(group_arr, spacing_threshold=5, min_width=23):
 	boxes = {}
 	max_gid = 0
 	for y in range(group_arr.shape[0]):
@@ -159,15 +159,21 @@ def extract_bounding_boxes(group_arr, spacing_threshold=5):
 
 		mids = [x1 + (start + end) // 2 for start, end in zero_ranges]
 		split_xs = [x1] + mids + [x2]
-		for i in range(len(split_xs) - 1):
+		i = 0
+		while i < len(split_xs) - 1:
 			start = split_xs[i]
 			end = split_xs[i + 1]
+			width = end - start
+			if width < min_width:
+				split_xs.pop(i + 1)
+				continue
 
 			col_nonzero = np.nonzero(col_averages[start:end])[0]
 			row_nonzero = np.nonzero(np.mean(local_group_mask[y1:y2, start:end], axis=1))[0]
 
 			if col_nonzero.size == 0:
-				continue
+				print("impossible case reached")
+				exit(1)
 
 			new_x1 = start + col_nonzero[0]
 			new_x2 = start + col_nonzero[-1] + 1
@@ -176,6 +182,7 @@ def extract_bounding_boxes(group_arr, spacing_threshold=5):
 
 			max_gid += 1
 			split_boxes.append((max_gid, (new_x1, new_x2, new_y1, new_y2)))
+			i += 1
 
 	return sorted(split_boxes, key=lambda x: x[0])
 
