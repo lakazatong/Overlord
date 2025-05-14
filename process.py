@@ -186,9 +186,9 @@ def merge_boxes(boxes, overlap_threshold=0.5):
 def draw_rectangle_on_numpy_arr(img_arr, offsets, color=[255, 0, 0]):
 	x1, x2, y1, y2 = offsets
 	img_arr[y1:y2, x1 - 1] = color
-	img_arr[y1:y2, x2] = color
+	img_arr[y1:y2, x2 - 1] = color
 	img_arr[y1 - 1, x1:x2] = color
-	img_arr[y2, x1:x2] = color
+	img_arr[y2 - 1, x1:x2] = color
 
 def draw_number_on_image(img_arr, number, position, font_size=30):
 	number_image = Image.new('L', (font_size * 2, font_size * 2), 255)
