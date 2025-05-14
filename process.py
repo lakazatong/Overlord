@@ -1,5 +1,5 @@
 import cProfile, time, math, os, shutil, numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 # from bisect import insort
 
 import matplotlib.pyplot as plt
@@ -155,14 +155,34 @@ def draw_rectangle_on_numpy_arr(img_arr, offsets, color=[255, 0, 0]):
 	img_arr[y1, x1:x2] = color
 	img_arr[y2 - 1, x1:x2] = color
 
+def draw_number_on_image(img_arr, number, position, font_size=30):
+	number_image = Image.new('L', (font_size * 2, font_size * 2), 255)
+	draw = ImageDraw.Draw(number_image)
+	try:
+		font = ImageFont.truetype("arial.ttf", font_size)
+	except IOError:
+		font = ImageFont.load_default(font_size)
+	draw.text((0, 0), str(number).zfill(2), font=font, fill=0)
+	number_arr = np.array(number_image)
+	
+	x_offset, y_offset = position
+	y_offset -= font_size + 1
+
+	mask = number_arr != 255
+	number_arr_rgb = np.dstack([number_arr] * 3)
+	
+	boundaries = (slice(y_offset, y_offset + number_arr_rgb.shape[0]), slice(x_offset, x_offset + number_arr_rgb.shape[1]))
+	img_arr[boundaries] = np.where(mask[..., None], number_arr_rgb, img_arr[boundaries])
+
 def create_rgb_image(group_arr, colors_rgb, boxes):
 	rgb_arr = np.ones((*group_arr.shape, 3), dtype=np.uint8) * 255
 	for box_index, (x1, x2, y1, y2) in enumerate(boxes):
 		rgb_arr[y1:y2, x1:x2][group_arr[y1:y2, x1:x2] != -1] = colors_rgb[box_index % len(colors_rgb)]
 		draw_rectangle_on_numpy_arr(rgb_arr, (x1, x2, y1, y2))
+		draw_number_on_image(rgb_arr, box_index, (x1, y1))
 	return Image.fromarray(rgb_arr)
 
-def process(chapter, page):
+def process(chapter, page, marginal_text_avg_threshold=10, marginal_text_width_threshold=40):
 	page_folder = f"./{chapter}/{page}"
 	groups_folder = f"{page_folder}/groups"
 	
@@ -186,13 +206,27 @@ def process(chapter, page):
 
 	# print(time.time() - start_time)
 
+	gids_with_marginal_text = []
+
 	for gid, (x1, x2, y1, y2) in enumerate(boxes):
-		# print(gid, x2 - x1, y2 - y1)
 		plt.clf()
 		col_avg = col_averages[x1:x2]
 		plt.plot(col_avg)
 		plt.axhline(y=col_avg.mean(), color='red')
-		plt.savefig(f"{groups_folder}/{gid:02}_plot.png")
+
+		below_avg_text = ""
+		if x2 - x1 >= marginal_text_width_threshold:
+			avg = col_avg.mean()
+			above_avg_reversed = (col_avg > avg)[::-1]
+			below_avg_count = next((i for i, v in enumerate(above_avg_reversed) if v), len(above_avg_reversed)) - 1
+			if below_avg_count >= marginal_text_avg_threshold:
+				gids_with_marginal_text.append(gid)
+				below_avg_text = f"_{below_avg_count}"
+
+		plt.savefig(f"{groups_folder}/{gid:02}{below_avg_text}_plot.png")
+
+	if len(gids_with_marginal_text) > 0:
+		print(gids_with_marginal_text)
 
 	create_rgb_image(group_arr, colors_rgb, boxes).save(f"{page_folder}/groups.png")
 
