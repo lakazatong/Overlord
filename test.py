@@ -189,9 +189,9 @@ def extract_bounding_boxes(group_arr, spacing_threshold=5, min_width=23):
 def draw_rectangle_on_numpy_arr(img_arr, offsets, color=[255, 0, 0]):
 	x1, x2, y1, y2 = offsets
 	img_arr[y1:y2, x1] = color
-	img_arr[y1:y2, x2] = color
+	img_arr[y1:y2, x2 - 1] = color
 	img_arr[y1, x1:x2] = color
-	img_arr[y2, x1:x2] = color
+	img_arr[y2 - 1, x1:x2] = color
 
 def create_rgb_image(group_arr, colors_rgb, boxes):
 	rgb_arr = np.ones((group_arr.shape[0], group_arr.shape[1], 3), dtype=np.uint8) * 255
