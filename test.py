@@ -217,8 +217,9 @@ def main():
 			if int(page) < 8:
 				continue
 
+			st = time.time()
 			process(chapter, page)
-			print(chapter, page)
+			print(chapter, page, time.time() - st)
 
 # cProfile.run('main()')
 
