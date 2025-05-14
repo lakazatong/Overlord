@@ -156,15 +156,11 @@ def draw_rectangle_on_numpy_arr(img_arr, offsets, color=[255, 0, 0]):
 	img_arr[y2 - 1, x1:x2] = color
 
 def create_rgb_image(group_arr, colors_rgb, boxes):
-	rgb_arr = np.ones((group_arr.shape[0], group_arr.shape[1], 3), dtype=np.uint8) * 255
-	for i in range(group_arr.shape[0]):
-		for j in range(group_arr.shape[1]):
-			group_id = group_arr[i, j]
-			if group_id != -1:
-				rgb_arr[i, j] = colors_rgb[group_id % len(colors_rgb)]
-	for offsets in boxes:
-		draw_rectangle_on_numpy_arr(rgb_arr, offsets)
-	return rgb_arr
+	rgb_arr = np.ones((*group_arr.shape, 3), dtype=np.uint8) * 255
+	for box_index, (x1, x2, y1, y2) in enumerate(boxes):
+		rgb_arr[y1:y2, x1:x2][group_arr[y1:y2, x1:x2] != -1] = colors_rgb[box_index % len(colors_rgb)]
+		draw_rectangle_on_numpy_arr(rgb_arr, (x1, x2, y1, y2))
+	return Image.fromarray(rgb_arr)
 
 def process(chapter, page):
 	page_folder = f"./{chapter}/{page}"
@@ -198,7 +194,7 @@ def process(chapter, page):
 		plt.axhline(y=col_avg.mean(), color='red')
 		plt.savefig(f"{groups_folder}/{gid:02}_plot.png")
 
-	Image.fromarray(create_rgb_image(group_arr, colors_rgb, boxes)).save(f"{page_folder}/groups.png")
+	create_rgb_image(group_arr, colors_rgb, boxes).save(f"{page_folder}/groups.png")
 
 	for gid, (x1, x2, y1, y2) in enumerate(boxes):
 		crop_img = Image.fromarray(np.pad(arr[y1:y2, x1:x2], ((15, 15), (15, 15)), mode='constant', constant_values=255))
