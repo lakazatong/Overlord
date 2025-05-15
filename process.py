@@ -113,7 +113,7 @@ def split_boxes(boxes, group_arr, spacing_threshold=5, min_width=23):
 		
 		mids = [x1 + (start + end) // 2 for start, end in zero_ranges]
 		split_xs = [x1] + mids + [x2]
-		nb_added = 0
+		# nb_added = 0
 		i = 0
 		while i < len(split_xs) - 1:
 			start = split_xs[i]
@@ -149,11 +149,11 @@ def split_boxes(boxes, group_arr, spacing_threshold=5, min_width=23):
 
 			max_gid += 1
 			splitted.append((max_gid, (new_x1, new_x2, new_y1, new_y2)))
-			nb_added += 1
+			# nb_added += 1
 			i += 1
 
-		if nb_added > 1:
-			print(mids)
+		# if nb_added > 1:
+		# 	print(mids)
 
 	return splitted
 
@@ -249,7 +249,7 @@ def process(chapter, page, marginal_text_avg_threshold=10, marginal_text_width_t
 			group_arr[y1:y2, x1:x2][group_arr[y1:y2, x1:x2] != -1] = gid
 		create_rgb_image(group_arr, colors_rgb, splitted_boxes).save(f"{page_folder}/splitted_groups.png")
 
-		boxes = sorted(merge_boxes(splitted_boxes), key=lambda b: -b[0])
+		boxes = sorted(merge_boxes(splitted_boxes), key=lambda b: -b[1][0])
 		for gid, (x1, x2, y1, y2) in boxes:
 			group_arr[y1:y2, x1:x2][group_arr[y1:y2, x1:x2] != -1] = gid
 
@@ -294,13 +294,14 @@ def main():
 				continue
 			page = page_filename.split(".")[0]
 
-			if int(page) < 8:
+			if int(page) < 205:
 				continue
 
 			process(chapter, page)
 
 # cProfile.run('main()')
 
-main()
+# main()
 
-# process(1, "101")
+process(1, "008")
+process(1, "101")
