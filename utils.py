@@ -54,8 +54,8 @@ def draw_col(img_arr, text, position, font_size=36):
 	
 	x_offset, y_offset = position
 	for char in text:
-		if char == "ー":
-			char = "|"
+		if char == "ー" or char == "-":
+			char = "－"
 		draw.text((x_offset, y_offset), char, font=font, fill=0)
 		y_offset += font_size
 
