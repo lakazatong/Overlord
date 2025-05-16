@@ -65,42 +65,47 @@ def extract_boxes(group_arr, min_area=200):
 					boxes[gid][2] = min(boxes[gid][2], y)
 					boxes[gid][3] = max(boxes[gid][3], y + 1)
 	
-	return [(gid, box) for gid, box in sorted(boxes.items()) if (box[1] - box[0]) * (box[3] - box[2]) > min_area]
+	return [(gid, tuple(box)) for gid, box in sorted(boxes.items()) if (box[1] - box[0]) * (box[3] - box[2]) > min_area]
+
+def get_zero_ranges(group_mask, offsets, spacing_threshold, axis):
+	x1, x2, y1, y2 = offsets
+	avg = np.mean(group_mask[y1:y2, x1:x2], axis=axis)
+
+	binary = [1 if v > 0 else 0 for v in avg]
+
+	in_zero = binary[0] == 0
+	start = 0
+	binary.pop(0)
+
+	zero_ranges = []
+	i = 1
+
+	while binary:
+		curr = binary.pop(0)
+		if curr == 0 and not in_zero:
+			in_zero = True
+			start = i
+		elif curr == 1 and in_zero:
+			if i - start >= spacing_threshold:
+				zero_ranges.append((start, i))
+			in_zero = False
+		i += 1
+
+	return zero_ranges
 
 def split_boxes(boxes, white_on_black_normalized, group_arr, spacing_threshold=5, min_width=23):
 	splitted = []
 	max_gid = max(boxes, key=lambda x: x[0])[0]
-	for gid, (x1, x2, y1, y2) in boxes:
+	for gid, offsets in boxes:
 		group_mask = np.where(group_arr == gid, white_on_black_normalized, 0)
-		col_avg = np.mean(group_mask[y1:y2, x1:x2], axis=0)
-
-		binary = [1 if v > 0 else 0 for v in col_avg]
-
-		in_zero = binary[0] == 0
-		start = 0
-		binary.pop(0)
-
-		zero_ranges = []
-		i = 1
-
-		while binary:
-			curr = binary.pop(0)
-			if curr == 0 and not in_zero:
-				in_zero = True
-				start = i
-			elif curr == 1 and in_zero:
-				if i - start >= spacing_threshold:
-					zero_ranges.append((start, i))
-				in_zero = False
-			i += 1
-
+		zero_ranges = get_zero_ranges(group_mask, offsets, spacing_threshold, 0)
 		if len(zero_ranges) == 0:
-			splitted.append((gid, (x1, x2, y1, y2)))
+			splitted.append((gid, offsets))
 			continue
 		
+		x1, x2, y1, y2 = offsets
 		mids = [x1 + (start + end) // 2 for start, end in zero_ranges]
 		split_xs = [x1] + mids + [x2]
-		# nb_added = 0
 		i = 0
 		while i < len(split_xs) - 1:
 			start = split_xs[i]
@@ -113,20 +118,10 @@ def split_boxes(boxes, white_on_black_normalized, group_arr, spacing_threshold=5
 			col_nonzero = np.nonzero(np.mean(group_mask[y1:y2, start:end], axis=0))[0]
 			row_nonzero = np.nonzero(np.mean(group_mask[y1:y2, start:end], axis=1))[0]
 
-			if col_nonzero.size == 0:
+			if col_nonzero.size == 0 or row_nonzero.size == 0:
 				print("impossible case reached")
 				print(y1, y2)
 				print(start, end)
-				print(np.mean(group_mask[y1:y2, start:end]))
-				print(np.mean(group_mask[y1:y2, start:end]))
-				exit(1)
-
-			if row_nonzero.size == 0:
-				print("impossible case reached")
-				print(y1, y2)
-				print(start, end)
-				print(np.mean(group_mask[y1:y2, start:end]))
-				print(np.mean(group_mask[y1:y2, start:end]))
 				exit(1)
 
 			new_x1 = int(start + col_nonzero[0])
@@ -136,11 +131,7 @@ def split_boxes(boxes, white_on_black_normalized, group_arr, spacing_threshold=5
 
 			max_gid += 1
 			splitted.append((max_gid, (new_x1, new_x2, new_y1, new_y2)))
-			# nb_added += 1
 			i += 1
-
-		# if nb_added > 1:
-		# 	print(mids)
 
 	return splitted
 
@@ -170,6 +161,55 @@ def merge_boxes(boxes, overlap_threshold=0.5):
 			i += 1
 	return boxes
 
+def split_cols(boxes, white_on_black_normalized, group_arr, spacing_threshold=15, min_height=30):
+	gid = 0
+	cols = []
+	for old_gid, offsets in boxes:
+		group_mask = np.where(group_arr == old_gid, white_on_black_normalized, 0)
+		zero_ranges = get_zero_ranges(group_mask, offsets, spacing_threshold, 1)
+		if len(zero_ranges) == 0:
+			cols.append([(gid, offsets)])
+			gid += 1
+			continue
+		
+		x1, x2, y1, y2 = offsets
+		col = []
+		mids = [y1 + (start + end) // 2 for start, end in zero_ranges]
+		split_ys = [y1] + mids + [y2]
+
+		i = 0
+		while i < len(split_ys) - 1:
+			if split_ys[i + 1] - split_ys[i] < min_height:
+				del split_ys[i:i+2]
+				if i > 0:
+					i -= 1
+			else:
+				i += 1
+
+		for i in range(len(split_ys) - 1):
+			start, end = split_ys[i], split_ys[i + 1]
+
+			col_nonzero = np.nonzero(np.mean(group_mask[start:end, x1:x2], axis=0))[0]
+			row_nonzero = np.nonzero(np.mean(group_mask[start:end, x1:x2], axis=1))[0]
+
+			if col_nonzero.size == 0 or row_nonzero.size == 0:
+				print("impossible case reached")
+				print(start, end)
+				print(x1, x2)
+				exit(1)
+
+			new_x1 = int(x1 + col_nonzero[0])
+			new_x2 = int(x1 + col_nonzero[-1] + 1)
+			new_y1 = int(start + row_nonzero[0])
+			new_y2 = int(start + row_nonzero[-1] + 1)
+
+			col.append((gid, (new_x1, new_x2, new_y1, new_y2)))
+			gid += 1
+
+		cols.append(col)
+
+	return cols
+
 def process(chapter, page, marginal_text_avg_threshold=10, marginal_text_width_threshold=40):
 	print()
 	st = time.time()
@@ -188,20 +228,24 @@ def process(chapter, page, marginal_text_avg_threshold=10, marginal_text_width_t
 	group_arr = label_groups(white_on_black_normalized)
 	raw_boxes = extract_boxes(group_arr)
 
+	def update_group_arr(boxes):
+		for gid, (x1, x2, y1, y2) in boxes:
+			group_arr[y1:y2, x1:x2][group_arr[y1:y2, x1:x2] != -1] = gid
+
 	boxes = None
 	if len(raw_boxes) > 0:
 		create_rgb_image(group_arr, colors_rgb, raw_boxes).save(f"{page_folder}/raw_groups.png")
 
 		splitted_boxes = split_boxes(raw_boxes, white_on_black_normalized, group_arr)
-
-		for gid, (x1, x2, y1, y2) in splitted_boxes:
-			group_arr[y1:y2, x1:x2][group_arr[y1:y2, x1:x2] != -1] = gid
+		update_group_arr(splitted_boxes)
 		create_rgb_image(group_arr, colors_rgb, splitted_boxes).save(f"{page_folder}/splitted_groups.png")
 
-		boxes = sorted(merge_boxes(splitted_boxes), key=lambda b: -b[1][0])
-		
-		for gid, (x1, x2, y1, y2) in boxes:
-			group_arr[y1:y2, x1:x2][group_arr[y1:y2, x1:x2] != -1] = gid
+		merged_boxes = sorted(merge_boxes(splitted_boxes), key=lambda b: -b[1][0])
+		update_group_arr(merged_boxes)
+		create_rgb_image(group_arr, colors_rgb, merged_boxes).save(f"{page_folder}/merged_groups.png")
+
+		boxes = [b for col in split_cols(merged_boxes, white_on_black_normalized, group_arr) for b in col]
+		update_group_arr(boxes)
 	else:
 		boxes = raw_boxes
 
@@ -228,13 +272,17 @@ def process(chapter, page, marginal_text_avg_threshold=10, marginal_text_width_t
 		with open(f"{groups_folder}/{gid:02}.txt", "w", encoding="utf-8") as f:
 			f.write(text)
 
-		plt.clf()
-		row_avg = np.mean(np.where(group_arr == gid, white_on_black_normalized, 0)[y1:y2, x1:x2], axis=1)
-		binary = [row_avg.max() if v > 0 else 0 for v in row_avg]
-		plt.plot(row_avg)
-		plt.plot(binary)
-		plt.axhline(y=row_avg.mean(), color='red')
-		plt.savefig(f"{groups_folder}/{gid:02}_plot.png")
+		def plot_avg(axis, plot_path):
+			plt.clf()
+			avg = np.mean(np.where(group_arr == gid, white_on_black_normalized, 0)[y1:y2, x1:x2], axis=axis)
+			binary = [avg.max() if v > 0 else 0 for v in avg]
+			plt.plot(avg)
+			plt.plot(binary)
+			plt.axhline(y=avg.mean(), color='red')
+			plt.savefig(plot_path)
+		
+		plot_avg(0, f"{groups_folder}/{gid:02}_avg_col_plot.png")
+		plot_avg(1, f"{groups_folder}/{gid:02}_avg_row_plot.png")
 
 	print(chapter, page, time.time() - st)
 
