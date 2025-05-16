@@ -258,7 +258,6 @@ def split_on_chooonpu(boxes, white_on_black_normalized, group_arr, spacing_thres
 	return splitted
 
 def process(chapter, page, marginal_text_avg_threshold=10, marginal_text_width_threshold=40):
-	print()
 	st = time.time()
 
 	page_folder = f"./{chapter}/{page}"
@@ -266,7 +265,7 @@ def process(chapter, page, marginal_text_avg_threshold=10, marginal_text_width_t
 	
 	if os.path.exists(page_folder):
 		shutil.rmtree(page_folder)
-	os.makedirs(groups_folder)
+	os.makedirs(page_folder)
 
 	arr = np.array(Image.open(f"{page_folder}.png").convert("L"))
 	black_on_white = arr
@@ -319,10 +318,11 @@ def process(chapter, page, marginal_text_avg_threshold=10, marginal_text_width_t
 	text_img = Image.fromarray(np.ones_like(black_on_white) * 255)
 
 	for gid, (x1, x2, y1, y2) in boxes:
+		os.makedirs(f"{groups_folder}/{gid:02}", exist_ok=True)
 		crop_img = Image.fromarray(np.pad(np.where(group_arr == gid, black_on_white, 255)[y1:y2, x1:x2], ((15, 15), (15, 15)), mode='constant', constant_values=255))
-		crop_img.save(f"{groups_folder}/{gid:02}.png")
+		crop_img.save(f"{groups_folder}/{gid:02}/{x1}_{x2}_{y1}_{y2}.png")
 		text = ocr(crop_img)
-		with open(f"{groups_folder}/{gid:02}.txt", "w", encoding="utf-8") as f:
+		with open(f"{groups_folder}/{gid:02}/text.txt", "w", encoding="utf-8") as f:
 			f.write(text)
 
 		def plot_avg(axis, plot_path):
@@ -334,10 +334,11 @@ def process(chapter, page, marginal_text_avg_threshold=10, marginal_text_width_t
 			plt.axhline(y=avg.mean(), color='red')
 			plt.savefig(plot_path)
 		
-		plot_avg(0, f"{groups_folder}/{gid:02}_avg_col_plot.png")
-		plot_avg(1, f"{groups_folder}/{gid:02}_avg_row_plot.png")
+		plot_avg(0, f"{groups_folder}/{gid:02}/avg_col_plot.png")
+		plot_avg(1, f"{groups_folder}/{gid:02}/avg_row_plot.png")
 
 		draw_col(text_img, text, (x1, y1))
+	
 	text_img.save(f"{page_folder}/text.png")
 
 	print(chapter, page, time.time() - st)
@@ -356,7 +357,7 @@ def main():
 
 # cProfile.run('main()')
 
-# main()
+main()
 
-process(1, "008")
+# process(1, "008")
 # process(1, "101")

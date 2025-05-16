@@ -48,9 +48,9 @@ def draw_gid(img_arr, number, position, font_size=30):
 	boundaries = (slice(y_offset, y_offset + number_arr_rgb.shape[0]), slice(x_offset, x_offset + number_arr_rgb.shape[1]))
 	img_arr[boundaries] = np.where(mask[..., None], number_arr_rgb, img_arr[boundaries])
 
-def draw_col(img_arr, text, position, font_size=38):
+def draw_col(img_arr, text, position, font_size=36):
 	draw = ImageDraw.Draw(img_arr)
-	font = get_font("./fonts/msgothic.ttc", font_size)
+	font = get_font("./fonts/NotoSerifCJK-Regular.ttc", font_size)
 	
 	x_offset, y_offset = position
 	for char in text:
