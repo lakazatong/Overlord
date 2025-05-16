@@ -43,7 +43,6 @@ def label_groups(white_on_black_normalized, radius=15):
 				queue.append((nx, ny))
 
 	while np.any(group_arr == -2):
-		# print(group_id)
 		indices = np.transpose(np.where(group_arr == -2))
 		x, y = indices[np.random.choice(len(indices))]
 		help(x, y)
@@ -67,11 +66,11 @@ def extract_boxes(group_arr, min_area=200):
 	
 	return [(gid, tuple(box)) for gid, box in sorted(boxes.items()) if (box[1] - box[0]) * (box[3] - box[2]) > min_area]
 
-def get_zero_ranges(group_mask, offsets, spacing_threshold, axis):
+def get_zero_ranges(group_mask, offsets, spacing_threshold, axis, zero_threshold=0):
 	x1, x2, y1, y2 = offsets
 	avg = np.mean(group_mask[y1:y2, x1:x2], axis=axis)
 
-	binary = [1 if v > 0 else 0 for v in avg]
+	binary = [0 if v <= zero_threshold else 1 for v in avg]
 
 	in_zero = binary[0] == 0
 	start = 0
@@ -91,9 +90,12 @@ def get_zero_ranges(group_mask, offsets, spacing_threshold, axis):
 			in_zero = False
 		i += 1
 
+	if in_zero and len(avg) - start >= spacing_threshold:
+		zero_ranges.append((start, len(avg)))
+
 	return zero_ranges
 
-def split_boxes(boxes, white_on_black_normalized, group_arr, spacing_threshold=5, min_width=23):
+def split_on_column(boxes, white_on_black_normalized, group_arr, spacing_threshold=5, min_width=23):
 	splitted = []
 	max_gid = max(boxes, key=lambda x: x[0])[0]
 	for gid, offsets in boxes:
@@ -119,7 +121,7 @@ def split_boxes(boxes, white_on_black_normalized, group_arr, spacing_threshold=5
 			row_nonzero = np.nonzero(np.mean(group_mask[y1:y2, start:end], axis=1))[0]
 
 			if col_nonzero.size == 0 or row_nonzero.size == 0:
-				print("impossible case reached")
+				print("split_on_column: impossible case reached")
 				print(y1, y2)
 				print(start, end)
 				exit(1)
@@ -161,14 +163,14 @@ def merge_boxes(boxes, overlap_threshold=0.5):
 			i += 1
 	return boxes
 
-def split_cols(boxes, white_on_black_normalized, group_arr, spacing_threshold=15, min_height=30):
+def split_on_ponctuation(boxes, white_on_black_normalized, group_arr, spacing_threshold=15, min_height=30):
 	gid = 0
-	cols = []
+	splitted = []
 	for old_gid, offsets in boxes:
 		group_mask = np.where(group_arr == old_gid, white_on_black_normalized, 0)
 		zero_ranges = get_zero_ranges(group_mask, offsets, spacing_threshold, 1)
 		if len(zero_ranges) == 0:
-			cols.append([(gid, offsets)])
+			splitted.append((gid, offsets))
 			gid += 1
 			continue
 		
@@ -193,7 +195,7 @@ def split_cols(boxes, white_on_black_normalized, group_arr, spacing_threshold=15
 			row_nonzero = np.nonzero(np.mean(group_mask[start:end, x1:x2], axis=1))[0]
 
 			if col_nonzero.size == 0 or row_nonzero.size == 0:
-				print("impossible case reached")
+				print("split_on_ponctuation: impossible case reached")
 				print(start, end)
 				print(x1, x2)
 				exit(1)
@@ -203,12 +205,57 @@ def split_cols(boxes, white_on_black_normalized, group_arr, spacing_threshold=15
 			new_y1 = int(start + row_nonzero[0])
 			new_y2 = int(start + row_nonzero[-1] + 1)
 
-			col.append((gid, (new_x1, new_x2, new_y1, new_y2)))
+			splitted.append((gid, (new_x1, new_x2, new_y1, new_y2)))
 			gid += 1
 
-		cols.append(col)
+	return splitted
 
-	return cols
+def split_on_chooonpu(boxes, white_on_black_normalized, group_arr, spacing_threshold=50, min_height=30):
+	gid = 0
+	splitted = []
+	for old_gid, offsets in boxes:
+		group_mask = np.where(group_arr == old_gid, white_on_black_normalized, 0)
+		zero_ranges = get_zero_ranges(group_mask, offsets, spacing_threshold, 1, 0.1)
+		if len(zero_ranges) == 0:
+			splitted.append((gid, offsets))
+			gid += 1
+			continue
+		
+		x1, x2, y1, y2 = offsets
+		col = []
+		mids = [y1 + (start + end) // 2 for start, end in zero_ranges]
+		split_ys = [y1] + mids + [y2]
+
+		n = len(split_ys)
+
+		def help():
+			nonlocal gid
+			start, end = split_ys[0], split_ys[1]
+
+			col_mean = np.mean(group_mask[start:end, x1:x2], axis=0)
+			row_mean = np.mean(group_mask[start:end, x1:x2], axis=1)
+			col_nonzero = np.nonzero(col_mean)[0]
+			row_zero = np.where(row_mean == 0)[0]
+			row_nonzero = np.nonzero(row_mean)[0]
+
+			if col_nonzero.size != 0 and row_zero.size != 0:
+				new_x1 = int(x1 + col_nonzero[0])
+				new_x2 = int(x1 + col_nonzero[-1] + 1)
+				new_y1 = int(start + (row_zero if len(split_ys) != n else row_nonzero)[0])
+				new_y2 = int(start + (row_zero if len(split_ys) > 2 else row_nonzero)[-1] + 1)
+				if new_y2 - new_y1 >= min_height:
+					splitted.append((gid, (new_x1, new_x2, new_y1, new_y2)))
+					gid += 1
+					split_ys.pop(0)
+				else:
+					split_ys.pop(1)
+			else:
+				split_ys.pop(1)
+
+		while len(split_ys) >= 2:
+			help()
+
+	return splitted
 
 def process(chapter, page, marginal_text_avg_threshold=10, marginal_text_width_threshold=40):
 	print()
@@ -236,15 +283,19 @@ def process(chapter, page, marginal_text_avg_threshold=10, marginal_text_width_t
 	if len(raw_boxes) > 0:
 		create_rgb_image(group_arr, colors_rgb, raw_boxes).save(f"{page_folder}/raw_groups.png")
 
-		splitted_boxes = split_boxes(raw_boxes, white_on_black_normalized, group_arr)
+		splitted_boxes = split_on_column(raw_boxes, white_on_black_normalized, group_arr)
 		update_group_arr(splitted_boxes)
-		create_rgb_image(group_arr, colors_rgb, splitted_boxes).save(f"{page_folder}/splitted_groups.png")
+		create_rgb_image(group_arr, colors_rgb, splitted_boxes).save(f"{page_folder}/raw_splitted_groups.png")
 
 		merged_boxes = sorted(merge_boxes(splitted_boxes), key=lambda b: -b[1][0])
 		update_group_arr(merged_boxes)
 		create_rgb_image(group_arr, colors_rgb, merged_boxes).save(f"{page_folder}/merged_groups.png")
 
-		boxes = [b for col in split_cols(merged_boxes, white_on_black_normalized, group_arr) for b in col]
+		cols = split_on_ponctuation(merged_boxes, white_on_black_normalized, group_arr)
+		update_group_arr(cols)
+		create_rgb_image(group_arr, colors_rgb, cols).save(f"{page_folder}/merged_splitted_groups.png")
+
+		boxes = split_on_chooonpu(cols, white_on_black_normalized, group_arr)
 		update_group_arr(boxes)
 	else:
 		boxes = raw_boxes
@@ -265,6 +316,8 @@ def process(chapter, page, marginal_text_avg_threshold=10, marginal_text_width_t
 	# if len(gids_with_marginal_text) > 0:
 	# 	print(gids_with_marginal_text)
 
+	text_img = Image.fromarray(np.ones_like(black_on_white) * 255)
+
 	for gid, (x1, x2, y1, y2) in boxes:
 		crop_img = Image.fromarray(np.pad(np.where(group_arr == gid, black_on_white, 255)[y1:y2, x1:x2], ((15, 15), (15, 15)), mode='constant', constant_values=255))
 		crop_img.save(f"{groups_folder}/{gid:02}.png")
@@ -284,6 +337,9 @@ def process(chapter, page, marginal_text_avg_threshold=10, marginal_text_width_t
 		plot_avg(0, f"{groups_folder}/{gid:02}_avg_col_plot.png")
 		plot_avg(1, f"{groups_folder}/{gid:02}_avg_row_plot.png")
 
+		draw_col(text_img, text, (x1, y1))
+	text_img.save(f"{page_folder}/text.png")
+
 	print(chapter, page, time.time() - st)
 
 def main():
@@ -293,7 +349,7 @@ def main():
 				continue
 			page = page_filename.split(".")[0]
 
-			if int(page) < 205:
+			if int(page) < 8:
 				continue
 
 			process(chapter, page)
@@ -303,4 +359,4 @@ def main():
 # main()
 
 process(1, "008")
-process(1, "101")
+# process(1, "101")
