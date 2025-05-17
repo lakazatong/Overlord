@@ -1,5 +1,6 @@
 import cProfile, time, math, os, shutil, numpy as np
 from PIL import Image
+from itertools import permutations
 
 import matplotlib.pyplot as plt
 plt.figure(figsize=(12, 4))
@@ -145,22 +146,14 @@ def merge_boxes(boxes, overlap_threshold=0.5):
 	merged = True
 	while merged:
 		merged = False
-		i = 0
-		while i < len(boxes):
-			j = 0
-			while j < len(boxes):
-				if i == j:
-					j += 1
-					continue
-				gid, (x1, x2, y1, y2) = boxes[i]
-				_, (mx1, mx2, my1, my2) = boxes[j]
-				if should_merge(x1, x2, mx1, mx2):
-					boxes[i] = (gid, (min(x1, mx1), max(x2, mx2), min(y1, my1), max(y2, my2)))
-					boxes.pop(j)
-					merged = True
-				else:
-					j += 1
-			i += 1
+		for i, j in permutations(range(len(boxes)), 2):
+			gid, (x1, x2, y1, y2) = boxes[i]
+			_, (mx1, mx2, my1, my2) = boxes[j]
+			if should_merge(x1, x2, mx1, mx2):
+				boxes[i] = (gid, (min(x1, mx1), max(x2, mx2), min(y1, my1), max(y2, my2)))
+				boxes.pop(j)
+				merged = True
+				break
 	return boxes
 
 def split_on_ponctuation(boxes, white_on_black_normalized, group_arr, spacing_threshold=15, min_height=30):
@@ -263,9 +256,9 @@ def process(chapter, page, marginal_text_avg_threshold=10, marginal_text_width_t
 	page_folder = f"./{chapter}/{page}"
 	groups_folder = f"{page_folder}/groups"
 	
-	if os.path.exists(page_folder):
-		shutil.rmtree(page_folder)
-	os.makedirs(page_folder)
+	# if os.path.exists(page_folder):
+	# 	shutil.rmtree(page_folder)
+	os.makedirs(page_folder, exist_ok=True)
 
 	arr = np.array(Image.open(f"{page_folder}.png").convert("L"))
 	black_on_white = arr
@@ -290,12 +283,12 @@ def process(chapter, page, marginal_text_avg_threshold=10, marginal_text_width_t
 		update_group_arr(merged_boxes)
 		create_rgb_image(group_arr, colors_rgb, merged_boxes).save(f"{page_folder}/merged_groups.png")
 
-		cols = split_on_ponctuation(merged_boxes, white_on_black_normalized, group_arr)
-		update_group_arr(cols)
-		create_rgb_image(group_arr, colors_rgb, cols).save(f"{page_folder}/merged_splitted_groups.png")
-
-		boxes = split_on_chooonpu(cols, white_on_black_normalized, group_arr)
+		boxes = split_on_ponctuation(merged_boxes, white_on_black_normalized, group_arr)
 		update_group_arr(boxes)
+		# create_rgb_image(group_arr, colors_rgb, cols).save(f"{page_folder}/merged_splitted_groups.png")
+
+		# boxes = split_on_chooonpu(cols, white_on_black_normalized, group_arr)
+		# update_group_arr(boxes)
 	else:
 		boxes = raw_boxes
 
@@ -350,8 +343,8 @@ def main():
 				continue
 			page = page_filename.split(".")[0]
 
-			if int(page) < 8:
-				continue
+			# if int(page) < 8:
+			# 	continue
 
 			process(chapter, page)
 
